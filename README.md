@@ -50,6 +50,30 @@ cargo build --release
 ln -sf $PWD/target/release/weather ~/.local/bin/weather
 ```
 
+## Sample for OpenClaw
+
+Add this as an OpenClaw cron `message.payload`:
+
+```
+Execute this exact command to generate the image:
+
+weather --timezone America/New_York --image --prompt "根據所給的時間、城市與天氣進行創作，夢幻插畫風格，手機桌布，展現城市、建築、交通、地標、美食、人文、風景、文化等隨機其中一個特色，畫面元素不要太多，所有文字都不要" --output /path-to-my-workspace/outputs/nyc-weather-latest.png --resolution "1K"
+
+Then send this exact image file to my Telegram with force-document by EXECUTING this exact command:
+
+openclaw message send --channel telegram --account <MY_ACCOUNT> --target <MY_TG_ID> --media /path-to-my-workspace/outputs/nyc-weather-latest.png --force-document -m "<TRADITIONAL_CHINESE_CAPTION>"
+
+Requirements:
+- Do not change the image generation command.
+- Do not save the final image under /tmp.
+- Do not ask the user to send it manually.
+- Do not stop after generating the image.
+- Do not merely describe the send command; actually execute it.
+- Your task is incomplete until the Telegram send command succeeds.
+- If sending fails, report the exact failure reason.
+- In the final response, briefly confirm the image path used and that the send command succeeded.
+```
+
 ## Image generation
 
 Requires `banana` in `$PATH` and `GEMINI_API_KEY` set in the environment.
