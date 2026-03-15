@@ -1,5 +1,5 @@
+use base64::{engine::general_purpose, Engine};
 use serde::Deserialize;
-use std::process::Command;
 
 #[derive(Deserialize)]
 struct Response {
@@ -18,6 +18,19 @@ struct Current {
 struct Daily {
     temperature_2m_max: Vec<f64>,
     temperature_2m_min: Vec<f64>,
+}
+
+#[derive(Deserialize)]
+struct GeoResult {
+    results: Option<Vec<GeoLocation>>,
+}
+
+#[derive(Deserialize)]
+struct GeoLocation {
+    name: String,
+    latitude: f64,
+    longitude: f64,
+    timezone: String,
 }
 
 fn wmo(code: u32) -> &'static str {
@@ -40,27 +53,29 @@ fn wmo(code: u32) -> &'static str {
     }
 }
 
-fn city_name(timezone: &str) -> &str {
-    match timezone {
-        "America/New_York" => "New York",
-        "America/Los_Angeles" => "Los Angeles",
-        "Europe/London" => "London",
-        "Asia/Tokyo" => "Tokyo",
-        "Asia/Taipei" => "Taipei",
-        "Asia/Shanghai" => "Shanghai",
-        _ => timezone,
-    }
+/// Extract city name from timezone string (e.g. "Asia/Keelung" -> "Keelung")
+fn city_from_timezone(timezone: &str) -> &str {
+    timezone.split('/').last().unwrap_or(timezone)
 }
 
-fn coords(timezone: &str) -> (f64, f64) {
-    match timezone {
-        "America/New_York" => (40.7128, -74.0060),
-        "America/Los_Angeles" => (34.0522, -118.2437),
-        "Europe/London" => (51.5074, -0.1278),
-        "Asia/Tokyo" => (35.6762, 139.6503),
-        "Asia/Taipei" => (25.0330, 121.5654),
-        "Asia/Shanghai" => (31.2304, 121.4737),
-        _ => (0.0, 0.0),
+/// Resolve (lat, lon, city_name, iana_timezone) from timezone using Open-Meteo Geocoding API
+fn resolve_location(timezone: &str) -> (f64, f64, String, String) {
+    let city = city_from_timezone(timezone).replace('_', " ");
+    let url = format!(
+        "https://geocoding-api.open-meteo.com/v1/search?name={}&count=1&language=en&format=json",
+        urlencoding::encode(&city)
+    );
+    let geo: GeoResult = reqwest::blocking::get(&url)
+        .expect("geocoding request failed")
+        .json()
+        .expect("geocoding parse failed");
+
+    match geo.results.and_then(|r| r.into_iter().next()) {
+        Some(loc) => (loc.latitude, loc.longitude, loc.name, loc.timezone),
+        None => {
+            eprintln!("Could not resolve location for timezone: {}", timezone);
+            std::process::exit(1);
+        }
     }
 }
 
@@ -75,6 +90,45 @@ fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
+fn generate_image(prompt: &str, output: &str, model: &str) {
+    let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+        model, api_key
+    );
+
+    let body = serde_json::json!({
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]}
+    });
+
+    let client = reqwest::blocking::Client::new();
+    let resp: serde_json::Value = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .expect("Gemini request failed")
+        .json()
+        .expect("Gemini response parse failed");
+
+    let parts = resp["candidates"][0]["content"]["parts"]
+        .as_array()
+        .expect("no parts in response");
+
+    for part in parts {
+        if let Some(data) = part["inlineData"]["data"].as_str() {
+            let bytes = general_purpose::STANDARD
+                .decode(data)
+                .expect("base64 decode failed");
+            std::fs::write(output, bytes).expect("failed to write image");
+            println!("Image saved to {}", output);
+            return;
+        }
+    }
+    eprintln!("No image returned from Gemini");
+    std::process::exit(1);
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -82,29 +136,36 @@ fn main() {
         println!("Usage: weather [OPTIONS]
 
 Options:
-  --timezone <tz>     Timezone (default: America/New_York)
-  --image             Generate weather image via banana
+  --timezone <tz>     Any IANA timezone (default: America/New_York)
+  --image             Generate weather image via Gemini API
+  --model <id>        Gemini model ID (default: gemini-3.1-flash-image-preview)
   --prompt <text>     Extra prompt appended to image generation
   --output <path>     Image output path (default: output.png)
   --resolution <res>  Image resolution: 1K, 2K, 4K (default: 1K)
   -h, --help          Show this help
 
-Supported timezones:
-  America/New_York, America/Los_Angeles, Europe/London,
-  Asia/Tokyo, Asia/Taipei, Asia/Shanghai");
+Examples:
+  weather --timezone Asia/Taipei
+  weather --timezone Asia/Keelung --image --prompt \"dreamy illustration\"
+
+Environment variables:
+  GEMINI_API_KEY      Required for --image");
         return;
     }
 
     let timezone = parse_arg(&args, "--timezone")
         .unwrap_or_else(|| "America/New_York".to_string());
     let image = has_flag(&args, "--image");
+    let model = parse_arg(&args, "--model")
+        .unwrap_or_else(|| "gemini-3.1-flash-image-preview".to_string());
     let user_prompt = parse_arg(&args, "--prompt");
     let output = parse_arg(&args, "--output")
         .unwrap_or_else(|| "output.png".to_string());
     let resolution = parse_arg(&args, "--resolution")
         .unwrap_or_else(|| "1K".to_string());
 
-    let (lat, lon) = coords(&timezone);
+    let (lat, lon, city, iana_tz) = resolve_location(&timezone);
+
     let url = format!(
         "https://api.open-meteo.com/v1/forecast\
 ?latitude={lat}&longitude={lon}\
@@ -113,7 +174,7 @@ Supported timezones:
 &timezone={tz}",
         lat = lat,
         lon = lon,
-        tz = urlencoding::encode(&timezone),
+        tz = urlencoding::encode(&iana_tz),
     );
 
     let resp: Response = reqwest::blocking::get(&url)
@@ -125,9 +186,11 @@ Supported timezones:
     let current = resp.current.temperature_2m;
     let max = resp.daily.temperature_2m_max[0];
     let min = resp.daily.temperature_2m_min[0];
-    let city = city_name(&timezone);
 
-    println!("weather={} current={:.1}°C max={:.1}°C min={:.1}°C localtime={}", weather, current, max, min, resp.current.time);
+    println!(
+        "weather={} current={:.1}°C max={:.1}°C min={:.1}°C localtime={}",
+        weather, current, max, min, resp.current.time
+    );
 
     if image {
         let mut prompt = format!(
@@ -138,23 +201,8 @@ Supported timezones:
             prompt.push_str(". ");
             prompt.push_str(&extra);
         }
-
         eprintln!("Generating image: {}", prompt);
-
-        // banana always writes output.png in cwd; we run it in /tmp then move
-        let status = Command::new("banana")
-            .args(["-p", &prompt, "-resolution", &resolution])
-            .current_dir("/tmp")
-            .status()
-            .expect("banana not found");
-
-        if status.success() {
-            std::fs::rename("/tmp/output.png", &output)
-                .expect("failed to move output.png");
-            println!("Image saved to {}", output);
-        } else {
-            eprintln!("banana failed");
-            std::process::exit(1);
-        }
+        generate_image(&prompt, &output, &model);
+        let _ = resolution; // reserved for future API support
     }
 }
