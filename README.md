@@ -37,6 +37,16 @@ GEMINI_API_KEY=<key> weather --timezone Asia/Taipei \
   --output /tmp/out.png
 ```
 
+### Full example with detailed prompt
+
+```bash
+GEMINI_API_KEY=<key> weather --timezone Asia/Taipei \
+  --image \
+  --prompt "根據所給的時間、城市與天氣進行創作，夢幻插畫風格，手機桌布，展現城市、建築、交通、地標、美食、人文、風景、文化等隨機其中一個特色，畫面元素不要太多，所有文字都不要" \
+  --output /tmp/out.png \
+  --resolution "1K"
+```
+
 ## Options
 
 | Flag | Description | Default |
