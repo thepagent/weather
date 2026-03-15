@@ -1,5 +1,5 @@
+use base64::{engine::general_purpose, Engine};
 use serde::Deserialize;
-use std::process::Command;
 
 #[derive(Deserialize)]
 struct Response {
@@ -75,6 +75,49 @@ fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
+fn generate_image(prompt: &str, resolution: &str, output: &str) {
+    let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
+    let model = "gemini-2.0-flash-preview-image-generation";
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+        model, api_key
+    );
+
+    let body = serde_json::json!({
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"],
+            "imageGenerationConfig": {"imageSize": resolution}
+        }
+    });
+
+    let client = reqwest::blocking::Client::new();
+    let resp: serde_json::Value = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .expect("Gemini request failed")
+        .json()
+        .expect("Gemini response parse failed");
+
+    let parts = resp["candidates"][0]["content"]["parts"]
+        .as_array()
+        .expect("no parts in response");
+
+    for part in parts {
+        if let Some(data) = part["inlineData"]["data"].as_str() {
+            let bytes = general_purpose::STANDARD
+                .decode(data)
+                .expect("base64 decode failed");
+            std::fs::write(output, bytes).expect("failed to write image");
+            println!("Image saved to {}", output);
+            return;
+        }
+    }
+    eprintln!("No image returned from Gemini");
+    std::process::exit(1);
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -83,7 +126,7 @@ fn main() {
 
 Options:
   --timezone <tz>     Timezone (default: America/New_York)
-  --image             Generate weather image via banana
+  --image             Generate weather image via Gemini API
   --prompt <text>     Extra prompt appended to image generation
   --output <path>     Image output path (default: output.png)
   --resolution <res>  Image resolution: 1K, 2K, 4K (default: 1K)
@@ -91,7 +134,10 @@ Options:
 
 Supported timezones:
   America/New_York, America/Los_Angeles, Europe/London,
-  Asia/Tokyo, Asia/Taipei, Asia/Shanghai");
+  Asia/Tokyo, Asia/Taipei, Asia/Shanghai
+
+Environment variables:
+  GEMINI_API_KEY      Required for --image");
         return;
     }
 
@@ -127,7 +173,10 @@ Supported timezones:
     let min = resp.daily.temperature_2m_min[0];
     let city = city_name(&timezone);
 
-    println!("weather={} current={:.1}°C max={:.1}°C min={:.1}°C localtime={}", weather, current, max, min, resp.current.time);
+    println!(
+        "weather={} current={:.1}°C max={:.1}°C min={:.1}°C localtime={}",
+        weather, current, max, min, resp.current.time
+    );
 
     if image {
         let mut prompt = format!(
@@ -138,23 +187,7 @@ Supported timezones:
             prompt.push_str(". ");
             prompt.push_str(&extra);
         }
-
         eprintln!("Generating image: {}", prompt);
-
-        // banana always writes output.png in cwd; we run it in /tmp then move
-        let status = Command::new("banana")
-            .args(["-p", &prompt, "-resolution", &resolution])
-            .current_dir("/tmp")
-            .status()
-            .expect("banana not found");
-
-        if status.success() {
-            std::fs::rename("/tmp/output.png", &output)
-                .expect("failed to move output.png");
-            println!("Image saved to {}", output);
-        } else {
-            eprintln!("banana failed");
-            std::process::exit(1);
-        }
+        generate_image(&prompt, &resolution, &output);
     }
 }
