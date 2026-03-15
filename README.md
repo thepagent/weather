@@ -73,4 +73,14 @@ weather --timezone America/New_York --image --prompt "根據所給的時間、�
 Then send this exact image file to my Telegram with force-document by EXECUTING this exact command:
 
 openclaw message send --channel telegram --account <MY_ACCOUNT> --target <MY_TG_ID> --media /path-to-my-workspace/outputs/nyc-weather-latest.png --force-document -m "<TRADITIONAL_CHINESE_CAPTION>"
+
+Requirements:
+- Do not change the image generation command.
+- Do not save the final image under /tmp.
+- Do not ask the user to send it manually.
+- Do not stop after generating the image.
+- Do not merely describe the send command; actually execute it.
+- Your task is incomplete until the Telegram send command succeeds.
+- If sending fails, report the exact failure reason.
+- In the final response, briefly confirm the image path used and that the send command succeeded.
 ```
