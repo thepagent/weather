@@ -85,8 +85,7 @@ fn generate_image(prompt: &str, resolution: &str, output: &str, model: &str) {
     let body = serde_json::json!({
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
-            "responseModalities": ["TEXT", "IMAGE"],
-            "imageGenerationConfig": {"imageSize": resolution}
+            "responseModalities": ["TEXT", "IMAGE"]
         }
     });
 
