@@ -77,7 +77,7 @@ fn has_flag(args: &[String], flag: &str) -> bool {
 
 fn generate_image(prompt: &str, resolution: &str, output: &str) {
     let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
-    let model = "gemini-2.0-flash-preview-image-generation";
+    let model = "gemini-3.1-flash-image-preview";
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
         model, api_key
