@@ -65,6 +65,8 @@ ln -sf $PWD/target/release/weather ~/.local/bin/weather
 
 ## Sample for OpenClaw
 
+Add this as an OpenClaw cron `message.payload`:
+
 ```
 Execute this exact command to generate the image:
 
