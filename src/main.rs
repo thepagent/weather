@@ -75,9 +75,8 @@ fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
-fn generate_image(prompt: &str, resolution: &str, output: &str) {
+fn generate_image(prompt: &str, resolution: &str, output: &str, model: &str) {
     let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
-    let model = "gemini-3.1-flash-image-preview";
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
         model, api_key
@@ -127,6 +126,7 @@ fn main() {
 Options:
   --timezone <tz>     Timezone (default: America/New_York)
   --image             Generate weather image via Gemini API
+  --model <id>        Gemini model ID (default: gemini-3.1-flash-image-preview)
   --prompt <text>     Extra prompt appended to image generation
   --output <path>     Image output path (default: output.png)
   --resolution <res>  Image resolution: 1K, 2K, 4K (default: 1K)
@@ -144,6 +144,8 @@ Environment variables:
     let timezone = parse_arg(&args, "--timezone")
         .unwrap_or_else(|| "America/New_York".to_string());
     let image = has_flag(&args, "--image");
+    let model = parse_arg(&args, "--model")
+        .unwrap_or_else(|| "gemini-3.1-flash-image-preview".to_string());
     let user_prompt = parse_arg(&args, "--prompt");
     let output = parse_arg(&args, "--output")
         .unwrap_or_else(|| "output.png".to_string());
@@ -188,6 +190,6 @@ Environment variables:
             prompt.push_str(&extra);
         }
         eprintln!("Generating image: {}", prompt);
-        generate_image(&prompt, &resolution, &output);
+        generate_image(&prompt, &resolution, &output, &model);
     }
 }
