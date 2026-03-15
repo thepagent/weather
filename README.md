@@ -13,6 +13,7 @@ Any IANA timezone is supported — city coordinates are resolved automatically v
 
 ```bash
 weather --timezone Asia/Keelung
+weather --timezone Asia/Tainan
 weather --timezone Europe/Paris
 weather --timezone America/Chicago
 ```
