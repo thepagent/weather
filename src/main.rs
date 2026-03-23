@@ -90,7 +90,7 @@ fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
-fn generate_image(prompt: &str, output: &str, model: &str) {
+fn generate_image(prompt: &str, output: &str, model: &str, resolution: &str) {
     let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
@@ -99,10 +99,16 @@ fn generate_image(prompt: &str, output: &str, model: &str) {
 
     let body = serde_json::json!({
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]}
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"],
+            "imageConfig": {"imageSize": resolution}
+        }
     });
 
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .expect("failed to build client");
     let resp: serde_json::Value = client
         .post(&url)
         .json(&body)
@@ -202,7 +208,6 @@ Environment variables:
             prompt.push_str(&extra);
         }
         eprintln!("Generating image: {}", prompt);
-        generate_image(&prompt, &output, &model);
-        let _ = resolution; // reserved for future API support
+        generate_image(&prompt, &output, &model, &resolution);
     }
 }
