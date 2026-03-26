@@ -40,14 +40,32 @@ jobs:
       - name: Package
         shell: bash
         run: |
+          rm -rf package dist
           mkdir -p package dist
           cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} package/
           cp README.md package/
           tar -czf dist/${{ matrix.asset_name }} -C package .
 
-      - name: Upload release asset
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/${{ matrix.asset_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/${{ matrix.asset_name }}
+          files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
